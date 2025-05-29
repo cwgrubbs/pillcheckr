@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {ActivityIndicator, Image, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {getColors} from 'react-native-image-colors';
+import {getPalette,} from '@somesoap/react-native-image-palette';
 import {ResultsScreenProps} from "../types";
 
 type Pill = {
@@ -34,14 +34,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
         const analyzeImage = async () => {
             setIsLoading(true);
             try {
-                // --- 1. Extract Color ---
-                const colors = await getColors(imageUri, {
-                    fallback: '#000000',
-                    cache: true,
-                    key: imageUri,
-                });
 
-                const dominantColor = "dominant" in colors ? (colors.dominant || 'Unknown') : (colors.primary || 'Unknown');
+                const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
 
                 setExtractedFeatures(prev => ({ ...prev, color: dominantColor }));
 
