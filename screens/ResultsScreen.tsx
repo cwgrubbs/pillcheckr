@@ -1,6 +1,5 @@
 import React, {useEffect, useState} from 'react';
 import {ActivityIndicator, Image, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {getPalette,} from '@somesoap/react-native-image-palette';
 import {ResultsScreenProps} from "../types";
 
 type Pill = {
@@ -14,9 +13,12 @@ type Pill = {
 
 // Dummy data for pill identification (replace with real database lookup)
 const dummyPills = [
-    { id: '1', imprint: 'M 367', color: 'White', shape: 'Round', name: 'Acetaminophen 500mg', description: 'Pain reliever' },
-    { id: '2', imprint: 'WATSON 349', color: 'White', shape: 'Oval', name: 'Hydrocodone/Acetaminophen', description: 'Opioid pain medication' },
-    { id: '3', imprint: 'XANAX 0.5', color: 'Peach', shape: 'Oval', name: 'Alprazolam 0.5mg', description: 'Anxiety medication' },
+    { id: '1', imprint: 'M 367', color: 'White', shape: 'Round', name: 'Acetaminophen 500mg',
+        description: 'Pain reliever' },
+    { id: '2', imprint: 'WATSON 349', color: 'White', shape: 'Oval', name: 'Hydrocodone/Acetaminophen',
+        description: 'Opioid pain medication' },
+    { id: '3', imprint: 'XANAX 0.5', color: 'Peach', shape: 'Oval', name: 'Alprazolam 0.5mg',
+        description: 'Anxiety medication' },
     { id: '4', imprint: 'IBUPROFEN', color: 'Orange', shape: 'Round', name: 'Ibuprofen 200mg', description: 'NSAID' },
 ];
 
@@ -35,7 +37,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
             setIsLoading(true);
             try {
 
-                const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
+                const dominantColor = "lol"; //await getPalette(imageUri).then(palette => palette.vibrant);
 
                 setExtractedFeatures(prev => ({ ...prev, color: dominantColor }));
 
