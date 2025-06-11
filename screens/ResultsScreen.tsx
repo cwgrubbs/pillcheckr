@@ -5,6 +5,7 @@ import {ActivityIndicator, Image, ScrollView, StyleSheet, Text, View} from 'reac
 import {ResultsScreenProps} from "../types";
 import {getPalette} from "@somesoap/react-native-image-palette";
 import { GetColorName } from 'hex-color-to-color-name';
+import ColorBox from "../components/ColorBox";
 
 type Pill = {
     id: string;
@@ -43,7 +44,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
 
                 //dominant color
                 const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
-                setExtractedFeatures(prev => ({ ...prev, color: GetColorName(dominantColor) + " (" + dominantColor + ")" }));
+                setExtractedFeatures(prev => ({ ...prev, color:  dominantColor}));
 
                 //OCR
                 //const detectedImprint = await MlkitOcr.detectFromUri(imageUri);
@@ -116,7 +117,12 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
                 <View style={styles.featuresContainer}>
                     <Text style={styles.featureLabel}>Extracted Features:</Text>
                     <Text style={styles.featureText}>Imprint: {extractedFeatures.imprint}</Text>
-                    <Text style={styles.featureText}>Dominant Color: {extractedFeatures.color}</Text>
+                    <View style={{flexDirection: 'row', justifyContent:'space-between'}}>
+                        <Text style={styles.featureText}>
+                            Dominant Color: {GetColorName(extractedFeatures.color) + " (" + extractedFeatures.color + ")"}
+                        </Text>
+                        <ColorBox color={extractedFeatures.color} />
+                    </View>
                     <Text style={styles.featureText}>Shape: {extractedFeatures.shape}</Text>
 
                     <Text style={styles.matchTitle}>Potential Matches:</Text>
