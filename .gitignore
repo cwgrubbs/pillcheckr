@@ -39,3 +39,4 @@ yarn-error.*
 /.idea/modules.xml
 /pillcheckr.iml
 /.idea/vcs.xml
+/android/

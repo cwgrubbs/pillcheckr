@@ -1,6 +1,10 @@
 import React, {useEffect, useState} from 'react';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
+import MlkitOcr from 'react-native-mlkit-ocr';
 import {ActivityIndicator, Image, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {ResultsScreenProps} from "../types";
+import {getPalette} from "@somesoap/react-native-image-palette";
+import { GetColorName } from 'hex-color-to-color-name';
 
 type Pill = {
     id: string;
@@ -37,16 +41,14 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
             setIsLoading(true);
             try {
 
-                const dominantColor = "lol"; //await getPalette(imageUri).then(palette => palette.vibrant);
+                //dominant color
+                const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
+                setExtractedFeatures(prev => ({ ...prev, color: GetColorName(dominantColor) + " (" + dominantColor + ")" }));
 
-                setExtractedFeatures(prev => ({ ...prev, color: dominantColor }));
-
-                // --- 2. Extract Text (Imprint) ---
-                // This is where you'd integrate an OCR library.
-                // For FOSS, you'd likely need a more complex setup with a pre-trained model or a cloud API.
-                // Example with a placeholder:
-                const detectedImprint = await performOCR(imageUri); // Placeholder for OCR function
-                setExtractedFeatures(prev => ({ ...prev, imprint: detectedImprint }));
+                //OCR
+                //const detectedImprint = await MlkitOcr.detectFromUri(imageUri);
+                const detectedImprint = await TextRecognition.recognize(imageUri);
+                setExtractedFeatures(prev => ({ ...prev, imprint: detectedImprint.text }));
 
                 // --- 3. Extract Shape ---
                 // This is the most challenging part for FOSS on-device.
@@ -57,8 +59,10 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
 
                 // --- 4. Match with Dummy Database ---
                 const matched = dummyPills.filter(pill =>
-                        (detectedImprint.toLowerCase().includes(pill.imprint.toLowerCase()) || pill.imprint.toLowerCase().includes(detectedImprint.toLowerCase())) &&
-                        (dominantColor.toLowerCase().includes(pill.color.toLowerCase()) || pill.color.toLowerCase().includes(dominantColor.toLowerCase()))
+                        (detectedImprint.text.toLowerCase().includes(pill.imprint.toLowerCase())
+                            || pill.imprint.toLowerCase().includes(detectedImprint.text.toLowerCase()))
+                        && (dominantColor.toLowerCase().includes(pill.color.toLowerCase())
+                            || pill.color.toLowerCase().includes(dominantColor.toLowerCase()))
                     // Add shape matching here if your `detectShape` is robust
                 );
                 setMatchedPills(matched);

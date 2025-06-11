@@ -1,12 +1,12 @@
 import React from 'react';
-import {createStackNavigator} from '@react-navigation/stack';
 import {NavigationContainer} from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './screens/HomeScreen';
 import CameraScreen from './screens/CameraScreen';
 import ResultsScreen from './screens/ResultsScreen';
 import {RootStackParamList} from "./types";
 
-const Stack = createStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (

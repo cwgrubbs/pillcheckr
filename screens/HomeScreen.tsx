@@ -46,8 +46,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Pill Identifier</Text>
-            <Button title="Take Photo" onPress={() => pickImage('camera')} />
-            <Button title="Choose from Gallery" onPress={() => pickImage('gallery')} />
+            <View style={styles.buttonContainer}>
+                <Button title="Take Photo" onPress={() => pickImage('camera')} />
+                <Button title="Choose from Gallery" onPress={() => pickImage('gallery')} />
+            </View>
         </View>
     );
 }
@@ -63,4 +65,8 @@ const styles = StyleSheet.create({
         fontSize: 24,
         marginBottom: 20,
     },
+    buttonContainer: {
+        gap:'20',
+        flexDirection: 'column'
+    }
 });
