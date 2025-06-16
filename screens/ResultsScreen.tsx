@@ -5,7 +5,7 @@ import {ResultsScreenProps} from "../types";
 import {getPalette} from "@somesoap/react-native-image-palette";
 import {GetColorName} from 'hex-color-to-color-name';
 import ColorBox from "../components/ColorBox";
-import {ColorConversionCodes, OpenCV, ThresholdTypes} from 'react-native-fast-opencv'; // Import react-native-fast-opencv
+import {AdaptiveThresholdTypes, ColorConversionCodes, OpenCV, ThresholdTypes} from 'react-native-fast-opencv'; // Import react-native-fast-opencv
 import * as FileSystem from 'expo-file-system'; // Needed for saving processed images
 import RNFS from 'react-native-fs';
 
@@ -83,24 +83,6 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
 
             const outputFileName = `${FileSystem.cacheDirectory}processed_pill_${Date.now()}.png`;
 
-            // Define the sequence of OpenCV operations
-            const operations = [
-                // 1. Convert to grayscale: cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                {name: 'cvtColor', args: [ColorConversionCodes.COLOR_BGR2GRAY]}, // args: [conversionCode]
-
-                // 2. Adaptive Thresholding: cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 1)
-                // args: [maxValue, adaptiveMethod, thresholdType, blockSize, C]
-                {name: 'adaptiveThreshold', args: [255, ThresholdTypes.THRESH_BINARY, "THRESH_BINARY", 11, 1]},
-
-                // 3. Median Blur: cv2.medianBlur(threshold, 11)
-                // args: [ksize]
-                {name: 'medianBlur', args: [11]},
-
-                // 4. Bitwise NOT: cv2.bitwise_not(median)
-                {name: 'bitwiseNot', args: []}, // No additional args for bitwise_not
-            ];
-
-
             // Invoke the sequence of operations
             const processedUri = convertImageToBase64(imageUri)
                 .then((base64String) => {
@@ -111,10 +93,18 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                 })
                 .then((srcMat) => {
                     if (srcMat) {
+
                         OpenCV.invoke("cvtColor", srcMat, srcMat, ColorConversionCodes.COLOR_BGR2GRAY);
-                        //OpenCV.invoke("adaptiveThreshold", srcMat, srcMat, ColorConversionCodes.COLOR_BGR2GRAY);
+                        OpenCV.invoke("adaptiveThreshold", srcMat, srcMat, 255, AdaptiveThresholdTypes.ADAPTIVE_THRESH_MEAN_C,
+                            ThresholdTypes.THRESH_BINARY, 11, 1);
+                        OpenCV.invoke("medianBlur", srcMat, srcMat, 11);
+                        OpenCV.invoke("bitwise_not", srcMat, srcMat);
+
                         const result = OpenCV.toJSValue(srcMat);
                         RNFS.writeFile(outputFileName, result.base64, 'base64');
+
+                        OpenCV.clearBuffers();
+
                         return outputFileName.toString();
                     }
                 })
@@ -153,8 +143,12 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                 const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
                 setExtractedFeatures(prev => ({...prev, color: dominantColor}));
 
+                // --- 2. Extract Imprint ---
                 // OCR using the PROCESSED image URI
-                const detectedImprintResult = await TextRecognition.recognize(uriForOCR);
+                let detectedImprintResult = await TextRecognition.recognize(imageUri);
+                if(detectedImprintResult.text.length === 0) {
+                    detectedImprintResult = await TextRecognition.recognize(uriForOCR);
+                }
                 setExtractedFeatures(prev => ({...prev, imprint: detectedImprintResult.text}));
 
                 // --- 3. Extract Shape ---
