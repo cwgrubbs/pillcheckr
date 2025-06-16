@@ -18,18 +18,20 @@
     "expo": "~53.0.9",
     "expo-camera": "~16.1.6",
     "expo-dev-client": "~5.2.0",
+    "expo-image-manipulator": "~13.1.7",
     "expo-image-picker": "~16.1.4",
     "expo-status-bar": "~2.2.3",
     "hex-color-to-color-name": "^1.0.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.2",
+    "react-native-fast-opencv": "^0.4.6",
+    "react-native-fs": "^2.20.0",
     "react-native-mlkit-ocr": "^0.3.0",
     "react-native-reanimated": "^3.18.0",
     "react-native-safe-area-context": "^5.4.1",
     "react-native-screens": "^4.11.1",
-    "react-native-web": "^0.20.0",
-    "expo-image-manipulator": "~13.1.7"
+    "react-native-web": "^0.20.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

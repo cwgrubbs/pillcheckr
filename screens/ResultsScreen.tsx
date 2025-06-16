@@ -1,11 +1,13 @@
 import React, {useEffect, useState} from 'react';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
-import MlkitOcr from 'react-native-mlkit-ocr';
-import {ActivityIndicator, Image, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {ResultsScreenProps} from "../types";
 import {getPalette} from "@somesoap/react-native-image-palette";
-import { GetColorName } from 'hex-color-to-color-name';
+import {GetColorName} from 'hex-color-to-color-name';
 import ColorBox from "../components/ColorBox";
+import {ColorConversionCodes, OpenCV, ThresholdTypes} from 'react-native-fast-opencv'; // Import react-native-fast-opencv
+import * as FileSystem from 'expo-file-system'; // Needed for saving processed images
+import RNFS from 'react-native-fs';
 
 type Pill = {
     id: string;
@@ -18,17 +20,23 @@ type Pill = {
 
 // Dummy data for pill identification (replace with real database lookup)
 const dummyPills = [
-    { id: '1', imprint: 'M 367', color: 'White', shape: 'Round', name: 'Acetaminophen 500mg',
-        description: 'Pain reliever' },
-    { id: '2', imprint: 'WATSON 349', color: 'White', shape: 'Oval', name: 'Hydrocodone/Acetaminophen',
-        description: 'Opioid pain medication' },
-    { id: '3', imprint: 'XANAX 0.5', color: 'Peach', shape: 'Oval', name: 'Alprazolam 0.5mg',
-        description: 'Anxiety medication' },
-    { id: '4', imprint: 'IBUPROFEN', color: 'Orange', shape: 'Round', name: 'Ibuprofen 200mg', description: 'NSAID' },
+    {
+        id: '1', imprint: 'M 367', color: 'White', shape: 'Round', name: 'Acetaminophen 500mg',
+        description: 'Pain reliever'
+    },
+    {
+        id: '2', imprint: 'WATSON 349', color: 'White', shape: 'Oval', name: 'Hydrocodone/Acetaminophen',
+        description: 'Opioid pain medication'
+    },
+    {
+        id: '3', imprint: 'XANAX 0.5', color: 'Peach', shape: 'Oval', name: 'Alprazolam 0.5mg',
+        description: 'Anxiety medication'
+    },
+    {id: '4', imprint: 'IBUPROFEN', color: 'Orange', shape: 'Round', name: 'Ibuprofen 200mg', description: 'NSAID'},
 ];
 
-const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
-    const { imageUri } = route.params;
+const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
+    const {imageUri} = route.params;
     const [isLoading, setIsLoading] = useState(true);
     const [extractedFeatures, setExtractedFeatures] = useState({
         imprint: 'Analyzing...',
@@ -36,32 +44,130 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
         shape: 'Analyzing...',
     });
     const [matchedPills, setMatchedPills] = useState<Pill[]>([]);
+    const [processedImageUri, setProcessedImageUri] = useState<string | null>(null); // State for the processed image URI
+
+    const convertImageToBase64 = async (imageUri: string) => {
+        try {
+            return await RNFS.readFile(imageUri, 'base64');
+        } catch (error) {
+            console.error('Error converting image to base64:', error);
+            return null;
+        }
+    };
+
+    // Function to perform image pre-processing using react-native-fast-opencv's invoke
+    const preprocessImage = async (uri: string): Promise<string | undefined> => {
+        try {
+            // Ensure the URI is a file path if it's content:// or data:
+            let localUri = uri;
+            if (Platform.OS === 'android' && uri.startsWith('content://')) {
+                // On Android, content URIs need to be resolved to file paths
+                // This is a simplified approach; a more robust solution might use RNFS.
+                const fileName = `${FileSystem.cacheDirectory}temp_image_${Date.now()}.jpg`;
+                await FileSystem.copyAsync({
+                    from: uri,
+                    to: fileName,
+                });
+                localUri = fileName;
+            } else if (uri.startsWith('data:')) {
+                // Convert data URI to a temporary file
+                const base64Data = uri.split(',')[1];
+                // Determine format from URI or default to png if not clear
+                const format = uri.match(/data:image\/(.+);base64/)?.[1] || 'png';
+                const fileName = `${FileSystem.cacheDirectory}temp_image_${Date.now()}.${format}`;
+                await FileSystem.writeAsStringAsync(fileName, base64Data, {
+                    encoding: FileSystem.EncodingType.Base64,
+                });
+                localUri = fileName;
+            }
+
+            const outputFileName = `${FileSystem.cacheDirectory}processed_pill_${Date.now()}.png`;
+
+            // Define the sequence of OpenCV operations
+            const operations = [
+                // 1. Convert to grayscale: cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                {name: 'cvtColor', args: [ColorConversionCodes.COLOR_BGR2GRAY]}, // args: [conversionCode]
+
+                // 2. Adaptive Thresholding: cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 1)
+                // args: [maxValue, adaptiveMethod, thresholdType, blockSize, C]
+                {name: 'adaptiveThreshold', args: [255, ThresholdTypes.THRESH_BINARY, "THRESH_BINARY", 11, 1]},
+
+                // 3. Median Blur: cv2.medianBlur(threshold, 11)
+                // args: [ksize]
+                {name: 'medianBlur', args: [11]},
+
+                // 4. Bitwise NOT: cv2.bitwise_not(median)
+                {name: 'bitwiseNot', args: []}, // No additional args for bitwise_not
+            ];
+
+
+            // Invoke the sequence of operations
+            const processedUri = convertImageToBase64(imageUri)
+                .then((base64String) => {
+                    if (base64String) {
+                        console.log('Base64 string:', base64String);
+                        return OpenCV.base64ToMat(base64String);
+                    }
+                })
+                .then((srcMat) => {
+                    if (srcMat) {
+                        OpenCV.invoke("cvtColor", srcMat, srcMat, ColorConversionCodes.COLOR_BGR2GRAY);
+                        //OpenCV.invoke("adaptiveThreshold", srcMat, srcMat, ColorConversionCodes.COLOR_BGR2GRAY);
+                        const result = OpenCV.toJSValue(srcMat);
+                        RNFS.writeFile(outputFileName, result.base64, 'base64');
+                        return outputFileName.toString();
+                    }
+                })
+                .catch((error) => {
+                    console.error(error);
+                    return "lol wtf";
+                });
+
+            console.log("Processed URI from invoke:", processedUri);
+
+            return processedUri;
+
+        } catch (error) {
+            console.error("Error during image pre-processing with fast-opencv invoke:", error);
+            // Fallback to original image if pre-processing fails
+            return uri;
+        }
+    };
+
 
     useEffect(() => {
         const analyzeImage = async () => {
             setIsLoading(true);
+            let uriForOCR = imageUri; // Will be updated to processed URI
+
             try {
+                // Pre-process the image using the new invoke-based function
+                let processedUri = await preprocessImage(imageUri);
 
-                //dominant color
+                processedUri = processedUri ? processedUri : "aids";
+
+                setProcessedImageUri(processedUri); // Store processed URI for display
+                uriForOCR = processedUri; // Use the processed URI for OCR and potentially shape
+
+                // dominant color (using original image, as processing changes color)
                 const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
-                setExtractedFeatures(prev => ({ ...prev, color:  dominantColor}));
+                setExtractedFeatures(prev => ({...prev, color: dominantColor}));
 
-                //OCR
-                //const detectedImprint = await MlkitOcr.detectFromUri(imageUri);
-                const detectedImprint = await TextRecognition.recognize(imageUri);
-                setExtractedFeatures(prev => ({ ...prev, imprint: detectedImprint.text }));
+                // OCR using the PROCESSED image URI
+                const detectedImprintResult = await TextRecognition.recognize(uriForOCR);
+                setExtractedFeatures(prev => ({...prev, imprint: detectedImprintResult.text}));
 
                 // --- 3. Extract Shape ---
-                // This is the most challenging part for FOSS on-device.
-                // You'd need a trained model or complex image processing with OpenCV.
-                // For demonstration, we'll assume a very basic shape detection based on aspect ratio or a placeholder.
-                const detectedShape = await detectShape(imageUri); // Placeholder for shape detection
-                setExtractedFeatures(prev => ({ ...prev, shape: detectedShape }));
+                // For shape, you might also want to use a processed image (like the bitwiseNotUri)
+                // if your shape detection algorithm relies on binary images or contours.
+                // Or you could use the original if your shape detection is color/grayscale-based.
+                const detectedShape = await detectShape(uriForOCR); // Pass processed URI for shape detection
+                setExtractedFeatures(prev => ({...prev, shape: detectedShape}));
 
                 // --- 4. Match with Dummy Database ---
                 const matched = dummyPills.filter(pill =>
-                        (detectedImprint.text.toLowerCase().includes(pill.imprint.toLowerCase())
-                            || pill.imprint.toLowerCase().includes(detectedImprint.text.toLowerCase()))
+                        (detectedImprintResult.text.toLowerCase().includes(pill.imprint.toLowerCase())
+                            || pill.imprint.toLowerCase().includes(detectedImprintResult.text.toLowerCase()))
                         && (dominantColor.toLowerCase().includes(pill.color.toLowerCase())
                             || pill.color.toLowerCase().includes(dominantColor.toLowerCase()))
                     // Add shape matching here if your `detectShape` is robust
@@ -70,7 +176,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
 
             } catch (error) {
                 console.error("Error analyzing image:", error);
-                setExtractedFeatures({ imprint: 'Error', color: 'Error', shape: 'Error' });
+                setExtractedFeatures({imprint: 'Error', color: 'Error', shape: 'Error'});
                 setMatchedPills([]);
             } finally {
                 setIsLoading(false);
@@ -80,26 +186,20 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
         analyzeImage();
     }, [imageUri]);
 
-    // Placeholder for a simple OCR function (replace with real OCR logic)
-    const performOCR = async (uri: string) => {
-        // In a real app, you'd send the image to a service or an on-device ML model
-        // For a FOSS approach, you might explore Tesseract.js (for web) or native bindings if available for React Native.
-        // For now, let's simulate some common imprints based on simple image properties or a hardcoded guess.
-        if (uri.includes('sample_pill_m367')) return 'M 367'; // Placeholder for specific sample images
-        if (uri.includes('sample_pill_watson')) return 'WATSON 349';
-        if (uri.includes('sample_pill_xanax')) return 'XANAX 0.5';
-        if (uri.includes('sample_pill_ibuprofen')) return 'IBUPROFEN';
-
-        // Simulate OCR time
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        return 'UNKNOWN IMPRINT'; // Default if no specific match
-    };
-
     // Placeholder for a simple shape detection (replace with real computer vision logic)
+    // You could use opencv.findContours here if needed, but it would be a separate call
+    // not part of the 'invoke' chain as 'invoke' returns the final image, not intermediate contour data.
     const detectShape = async (uri: string) => {
-        // This is highly simplified. Real shape detection requires advanced computer vision.
-        // You'd use OpenCV functions like contour detection, aspect ratio analysis, etc.
-        // For now, let's make a guess based on some simple logic.
+        // Example of how you might use findContours separately:
+        // try {
+        //     const { contours, hierarchy } = await opencv.findContours(uri, opencv.RETR_TREE, opencv.CHAIN_APPROX_NONE);
+        //     console.log("Detected contours:", contours.length);
+        //     // Process contours to determine shape (e.g., check aspect ratio, number of vertices)
+        //     // For example: if contours.length > X and contour[0].length is approx circle...
+        // } catch (e) {
+        //     console.error("Error finding contours:", e);
+        // }
+
         if (uri.includes('sample_pill_oval')) return 'Oval';
         if (uri.includes('sample_pill_round')) return 'Round';
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -109,19 +209,34 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.title}>Analysis Results</Text>
-            {imageUri && <Image source={{ uri: imageUri }} style={styles.image} />}
+            {/* Display the ORIGINAL image */}
+            {imageUri && (
+                <View>
+                    <Text style={styles.imageLabel}>Original Image:</Text>
+                    <Image source={{uri: imageUri}} style={styles.image}/>
+                </View>
+            )}
+            {/* Display the PROCESSED image for debugging/comparison */}
+            {processedImageUri && processedImageUri !== imageUri && (
+                <View>
+                    <Text style={styles.imageLabel}>Processed Image (for OCR):</Text>
+                    <Image source={{uri: processedImageUri}} style={styles.image}/>
+                </View>
+            )}
+
 
             {isLoading ? (
-                <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />
+                <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator}/>
             ) : (
                 <View style={styles.featuresContainer}>
                     <Text style={styles.featureLabel}>Extracted Features:</Text>
                     <Text style={styles.featureText}>Imprint: {extractedFeatures.imprint}</Text>
-                    <View style={{flexDirection: 'row', justifyContent:'space-between'}}>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
                         <Text style={styles.featureText}>
-                            Dominant Color: {GetColorName(extractedFeatures.color) + " (" + extractedFeatures.color + ")"}
+                            Dominant
+                            Color: {GetColorName(extractedFeatures.color) + " (" + extractedFeatures.color + ")"}
                         </Text>
-                        <ColorBox color={extractedFeatures.color} />
+                        <ColorBox color={extractedFeatures.color}/>
                     </View>
                     <Text style={styles.featureText}>Shape: {extractedFeatures.shape}</Text>
 
@@ -137,7 +252,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ navigation, route }) => {
                             </View>
                         ))
                     ) : (
-                        <Text style={styles.noMatchText}>No direct matches found based on extracted features. Try a clearer photo or adjust lighting.</Text>
+                        <Text style={styles.noMatchText}>No direct matches found based on extracted features. Try a
+                            clearer photo or adjust lighting.</Text>
                     )}
                 </View>
             )}
@@ -165,6 +281,12 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         backgroundColor: '#eee',
     },
+    imageLabel: { // New style for image labels
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 5,
+        marginTop: 10,
+    },
     loadingIndicator: {
         marginTop: 50,
     },
@@ -173,7 +295,7 @@ const styles = StyleSheet.create({
         padding: 15,
         borderRadius: 10,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: {width: 0, height: 2},
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 3,
