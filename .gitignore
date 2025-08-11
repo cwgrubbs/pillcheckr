@@ -40,3 +40,4 @@ yarn-error.*
 /pillcheckr.iml
 /.idea/vcs.xml
 /android
+/ios
