@@ -1,6 +1,17 @@
 import React, {useEffect, useState} from 'react';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
-import {ActivityIndicator, Image, Platform, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {
+    ActivityIndicator,
+    Image,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import {Picker} from '@react-native-picker/picker'; // For dropdowns
 import {ResultsScreenProps} from "../types";
 import {getPalette} from "@somesoap/react-native-image-palette";
 import {GetColorName} from 'hex-color-to-color-name';
@@ -8,6 +19,7 @@ import ColorBox from "../components/ColorBox";
 import {AdaptiveThresholdTypes, ColorConversionCodes, OpenCV, ThresholdTypes} from 'react-native-fast-opencv'; // Import react-native-fast-opencv
 import * as FileSystem from 'expo-file-system'; // Needed for saving processed images
 import RNFS from 'react-native-fs';
+import Dropdown from 'react-native-input-select';
 
 type Pill = {
     id: string;
@@ -45,6 +57,44 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
     });
     const [matchedPills, setMatchedPills] = useState<Pill[]>([]);
     const [processedImageUri, setProcessedImageUri] = useState<string | null>(null); // State for the processed image URI
+
+    // --- New State for Manual Input ---
+    const [manualImprint, setManualImprint] = useState('');
+    const [manualColor, setManualColor] = useState<string>(''); // Initialize with an empty string
+    const [manualShape, setManualShape] = useState<string>(''); // Initialize with an empty string
+
+    // --- Define common pill colors and shapes ---
+    const commonPillColors = [
+        {label: 'Any', value: 'Any'},
+        {label: 'White', value: 'White'},
+        {label: 'Blue', value: 'Blue'},
+        {label: 'Green', value: 'Green'},
+        {label: 'Yellow', value: 'Yellow'},
+        {label: 'Orange', value: 'Orange'},
+        {label: 'Pink', value: 'Pink'},
+        {label: 'Purple', value: 'Purple'},
+        {label: 'Red', value: 'Red'},
+        {label: 'Brown', value: 'Brown'},
+        {label: 'Black', value: 'Black'},
+        {label: 'Clear', value: 'Clear'}
+    ];
+    const allPillShapes = [
+        {label: 'Any', value: 'Any'},
+        {label: 'Round', value: 'Round'},
+        {label: 'Oval', value: 'Oval'},
+        {label: 'Capsule', value: 'Capsule'},
+        {label: 'Oblong', value: 'Oblong'},
+        {label: 'Diamond', value: 'Diamond'},
+        {label: 'Rectangle', value: 'Rectangle'},
+        {label: 'Triangle', value: 'Triangle'},
+        {label: 'Pentagon', value: 'Pentagon'},
+        {label: 'Hexagon', value: 'Hexagon'},
+        {label: 'Octagon', value: 'Octagon'},
+        {label: 'Tear', value: 'Tear'},
+        {label: 'G', value: 'G'},
+        {label: 'Barrel', value: 'Barrel'},
+        {label: 'Heart', value: 'Heart'}
+    ];
 
     const convertImageToBase64 = async (imageUri: string) => {
         try {
@@ -87,7 +137,6 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
             const processedUri = convertImageToBase64(imageUri)
                 .then((base64String) => {
                     if (base64String) {
-                        console.log('Base64 string:', base64String);
                         return OpenCV.base64ToMat(base64String);
                     }
                 })
@@ -125,48 +174,43 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
     };
 
 
+    // --- Modified analyzeImage to handle manual search ---
     useEffect(() => {
-        const analyzeImage = async () => {
+        // This useEffect will now only trigger the *initial* automated analysis
+        // The manual search will be triggered by a separate function
+        const initialAnalyze = async () => {
             setIsLoading(true);
-            let uriForOCR = imageUri; // Will be updated to processed URI
+            let uriForOCR = imageUri;
 
             try {
-                // Pre-process the image using the new invoke-based function
-                let processedUri = await preprocessImage(imageUri);
+                // Perform automated pre-processing and feature extraction
+                /*const processedUri = await preprocessImage(imageUri);
 
-                processedUri = processedUri ? processedUri : "aids";
+                if (processedUri) {
+                    setProcessedImageUri(processedUri);
+                    uriForOCR = processedUri;
+                } else {
+                    console.warn("Image pre-processing failed, using original image for OCR.");
+                    setProcessedImageUri(imageUri);
+                }*/
 
-                setProcessedImageUri(processedUri); // Store processed URI for display
-                uriForOCR = processedUri; // Use the processed URI for OCR and potentially shape
+                console.warn("Image pre-processing failed, using original image for OCR.");
+                setProcessedImageUri(imageUri);
 
-                // dominant color (using original image, as processing changes color)
+                // Automated Color Detection (always from original image)
                 const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
                 setExtractedFeatures(prev => ({...prev, color: dominantColor}));
 
-                // --- 2. Extract Imprint ---
-                // OCR using the PROCESSED image URI
-                let detectedImprintResult = await TextRecognition.recognize(imageUri);
-                if(detectedImprintResult.text.length === 0) {
-                    detectedImprintResult = await TextRecognition.recognize(uriForOCR);
-                }
+                // Automated OCR
+                const detectedImprintResult = await TextRecognition.recognize(uriForOCR);
                 setExtractedFeatures(prev => ({...prev, imprint: detectedImprintResult.text}));
 
-                // --- 3. Extract Shape ---
-                // For shape, you might also want to use a processed image (like the bitwiseNotUri)
-                // if your shape detection algorithm relies on binary images or contours.
-                // Or you could use the original if your shape detection is color/grayscale-based.
-                const detectedShape = await detectShape(uriForOCR); // Pass processed URI for shape detection
+                // Automated Shape (placeholder, will use uriForOCR)
+                const detectedShape = await detectShape(uriForOCR);
                 setExtractedFeatures(prev => ({...prev, shape: detectedShape}));
 
-                // --- 4. Match with Dummy Database ---
-                const matched = dummyPills.filter(pill =>
-                        (detectedImprintResult.text.toLowerCase().includes(pill.imprint.toLowerCase())
-                            || pill.imprint.toLowerCase().includes(detectedImprintResult.text.toLowerCase()))
-                        && (dominantColor.toLowerCase().includes(pill.color.toLowerCase())
-                            || pill.color.toLowerCase().includes(dominantColor.toLowerCase()))
-                    // Add shape matching here if your `detectShape` is robust
-                );
-                setMatchedPills(matched);
+                // Initial automated match
+                matchPills(detectedImprintResult.text, dominantColor, detectedShape);
 
             } catch (error) {
                 console.error("Error analyzing image:", error);
@@ -177,8 +221,31 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
             }
         };
 
-        analyzeImage();
-    }, [imageUri]);
+        initialAnalyze();
+    }, [imageUri]); // Only re-run on imageUri change
+
+    // --- New function for matching pills based on provided features ---
+    const matchPills = (imprint: string, color: string, shape: string) => {
+        const matched = dummyPills.filter(pill => {
+            const imprintMatch = (imprint && (imprint.toLowerCase().includes(pill.imprint.toLowerCase())
+                || pill.imprint.toLowerCase().includes(imprint.toLowerCase())));
+            const colorMatch = (color === 'Any' || (color && (color.toLowerCase().includes(pill.color.toLowerCase())
+                || pill.color.toLowerCase().includes(color.toLowerCase()))));
+            const shapeMatch = (shape === 'Any' || (shape && (shape.toLowerCase().includes(pill.shape.toLowerCase())
+                || pill.shape.toLowerCase().includes(shape.toLowerCase()))));
+
+            return imprintMatch && colorMatch && shapeMatch;
+        });
+        setMatchedPills(matched);
+    };
+
+    // --- Manual Search Trigger ---
+    const handleManualSearch = () => {
+        setIsLoading(true); // Show loading while searching
+        // Use manual inputs for matching
+        matchPills(manualImprint, manualColor, manualShape);
+        setIsLoading(false); // Hide loading after search
+    };
 
     // Placeholder for a simple shape detection (replace with real computer vision logic)
     // You could use opencv.findContours here if needed, but it would be a separate call
@@ -203,36 +270,74 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.title}>Analysis Results</Text>
-            {/* Display the ORIGINAL image */}
+            {/* ... (Original and Processed Image Display) ... */}
             {imageUri && (
                 <View>
                     <Text style={styles.imageLabel}>Original Image:</Text>
                     <Image source={{uri: imageUri}} style={styles.image}/>
                 </View>
             )}
-            {/* Display the PROCESSED image for debugging/comparison */}
+
+            {/*
             {processedImageUri && processedImageUri !== imageUri && (
                 <View>
                     <Text style={styles.imageLabel}>Processed Image (for OCR):</Text>
                     <Image source={{uri: processedImageUri}} style={styles.image}/>
                 </View>
             )}
-
+            */}
 
             {isLoading ? (
                 <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator}/>
             ) : (
                 <View style={styles.featuresContainer}>
-                    <Text style={styles.featureLabel}>Extracted Features:</Text>
+                    <Text style={styles.featureLabel}>Extracted Features (Automated):</Text>
                     <Text style={styles.featureText}>Imprint: {extractedFeatures.imprint}</Text>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
                         <Text style={styles.featureText}>
                             Dominant
                             Color: {GetColorName(extractedFeatures.color) + " (" + extractedFeatures.color + ")"}
+                            <ColorBox color={extractedFeatures.color}/>
                         </Text>
-                        <ColorBox color={extractedFeatures.color}/>
                     </View>
                     <Text style={styles.featureText}>Shape: {extractedFeatures.shape}</Text>
+
+                    {/* --- Manual Input Section --- */}
+                    <View style={styles.manualInputContainer}>
+                        <Text style={styles.manualInputTitle}>Manual Search</Text>
+
+                        <Text style={styles.inputLabel}>Imprint Text:</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="e.g., M 367, IBUPROFEN"
+                            value={manualImprint}
+                            onChangeText={setManualImprint}
+                        />
+
+                        <Dropdown
+                            label="Color:"
+                            labelStyle={styles.inputLabel}
+                            placeholder="Select an option..."
+                            options={commonPillColors}
+                            selectedValue={manualColor}
+                            onValueChange={(itemValue: any) => setManualColor(itemValue)}
+                        />
+
+                        <Dropdown
+                            label="Shape:"
+                            labelStyle={styles.inputLabel}
+                            placeholder="Select an option..."
+                            options={allPillShapes}
+                            selectedValue={manualShape}
+                            onValueChange={(itemValue: any) => setManualShape(itemValue)}
+                        />
+
+                        <TouchableOpacity style={styles.searchButton} onPress={handleManualSearch}>
+                            <Text style={styles.searchButtonText}>Search</Text>
+                        </TouchableOpacity>
+                    </View>
+                    {/* --- End Manual Input Section --- */}
+
 
                     <Text style={styles.matchTitle}>Potential Matches:</Text>
                     {matchedPills.length > 0 ? (
@@ -247,7 +352,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                         ))
                     ) : (
                         <Text style={styles.noMatchText}>No direct matches found based on extracted features. Try a
-                            clearer photo or adjust lighting.</Text>
+                            clearer photo, adjust lighting, or use manual search.</Text>
                     )}
                 </View>
             )}
@@ -301,7 +406,7 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     featureText: {
-        fontSize: 16,
+        fontSize: 14,
         marginBottom: 5,
     },
     matchTitle: {
@@ -324,9 +429,67 @@ const styles = StyleSheet.create({
         marginBottom: 5,
         color: '#0056b3',
     },
+    manualInputContainer: {
+        backgroundColor: '#f0f8ff', // Light blue background for manual section
+        padding: 15,
+        borderRadius: 10,
+        marginTop: 20,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: '#d0e0ff',
+    },
+    manualInputTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 15,
+        textAlign: 'center',
+        color: '#0056b3',
+    },
+    inputLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        marginTop: 10,
+        marginBottom: 5,
+        color: '#333',
+    },
+    textInput: {
+        height: 40,
+        borderColor: '#ccc',
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        marginBottom: 10,
+        backgroundColor: '#fff',
+    },
+    pickerContainer: {
+        borderColor: '#ccc',
+        borderWidth: 1,
+        borderRadius: 8,
+        marginBottom: 10,
+        overflow: 'hidden', // Ensures border radius clips picker content
+        backgroundColor: '#fff',
+    },
+    picker: {
+        height: 50, // Standard height for picker
+        width: '100%',
+    },
+    searchButton: {
+        backgroundColor: '#007bff',
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginTop: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    searchButtonText: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
     noMatchText: {
         fontStyle: 'italic',
         color: '#555',
+        marginTop: 10, // Add some margin
     },
 });
 

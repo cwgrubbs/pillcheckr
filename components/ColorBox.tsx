@@ -13,9 +13,8 @@ const ColorBox: React.FC<ColorBoxProps> = ({ color }) => {
 
 const styles = StyleSheet.create({
     colorBox: {
-        width: 32,
-        height: 32,
-        margin: 8,
+        width: 8,
+        height: 8,
     },
 });
 
