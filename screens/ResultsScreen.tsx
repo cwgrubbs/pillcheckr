@@ -11,15 +11,17 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import {Picker} from '@react-native-picker/picker'; // For dropdowns
-import {ResultsScreenProps} from "../types";
 import {getPalette} from "@somesoap/react-native-image-palette";
 import {GetColorName} from 'hex-color-to-color-name';
-import ColorBox from "../components/ColorBox";
 import {AdaptiveThresholdTypes, ColorConversionCodes, OpenCV, ThresholdTypes} from 'react-native-fast-opencv'; // Import react-native-fast-opencv
 import * as FileSystem from 'expo-file-system'; // Needed for saving processed images
 import RNFS from 'react-native-fs';
 import Dropdown from 'react-native-input-select';
+
+import {ResultsScreenProps} from "../types";
+import { hexToHsv, hsvToBasicName } from "../util/colorUtils";
+import ColorBox from "../components/ColorBox";
+
 
 type Pill = {
     id: string;
@@ -45,6 +47,7 @@ const dummyPills = [
         description: 'Anxiety medication'
     },
     {id: '4', imprint: 'IBUPROFEN', color: 'Orange', shape: 'Round', name: 'Ibuprofen 200mg', description: 'NSAID'},
+    {id: '5', imprint: 'MV', color: 'Blue', shape: 'Oval', name: 'Vilazodone 40MG', description: 'SSRI'},
 ];
 
 const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
@@ -52,20 +55,16 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
     const [isLoading, setIsLoading] = useState(true);
     const [extractedFeatures, setExtractedFeatures] = useState({
         imprint: 'Analyzing...',
-        color: 'Analyzing...',
+        basicColor: 'Analyzing...',
+        hexColor: 'Analyzing...',
         shape: 'Analyzing...',
     });
     const [matchedPills, setMatchedPills] = useState<Pill[]>([]);
     const [processedImageUri, setProcessedImageUri] = useState<string | null>(null); // State for the processed image URI
 
-    // --- New State for Manual Input ---
-    const [manualImprint, setManualImprint] = useState('');
-    const [manualColor, setManualColor] = useState<string>(''); // Initialize with an empty string
-    const [manualShape, setManualShape] = useState<string>(''); // Initialize with an empty string
-
     // --- Define common pill colors and shapes ---
     const commonPillColors = [
-        {label: 'Any', value: 'Any'},
+        {label: 'Any', value: 'Any', hex: '', hsv: ''},
         {label: 'White', value: 'White'},
         {label: 'Blue', value: 'Blue'},
         {label: 'Green', value: 'Green'},
@@ -194,12 +193,17 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                     setProcessedImageUri(imageUri);
                 }*/
 
-                console.warn("Image pre-processing failed, using original image for OCR.");
-                setProcessedImageUri(imageUri);
-
                 // Automated Color Detection (always from original image)
-                const dominantColor = await getPalette(imageUri).then(palette => palette.vibrant);
-                setExtractedFeatures(prev => ({...prev, color: dominantColor}));
+                const hexDominant = await getPalette(imageUri).then(palette => palette.vibrant);
+                setExtractedFeatures(prev => ({...prev, hexColor: hexDominant}));
+                const hsv = hexToHsv(hexDominant);
+                console.log("hexDominant:" + hexDominant);
+                console.log("hue: " + hsv.h + " saturation: " + hsv.s + " v: " + hsv.v);
+                const dominantColor = hsvToBasicName(hsv.h, hsv.s, hsv.v);
+                console.log("dominantColor:" + dominantColor);
+                setExtractedFeatures(prev => ({...prev, basicColor: dominantColor}));
+                console.log("hexColor:" + extractedFeatures.hexColor);
+                console.log("basicColor:" + extractedFeatures.basicColor);
 
                 // Automated OCR
                 const detectedImprintResult = await TextRecognition.recognize(uriForOCR);
@@ -214,7 +218,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
 
             } catch (error) {
                 console.error("Error analyzing image:", error);
-                setExtractedFeatures({imprint: 'Error', color: 'Error', shape: 'Error'});
+                setExtractedFeatures({imprint: 'Error', basicColor: 'Error', hexColor: 'Error', shape: 'Error'});
                 setMatchedPills([]);
             } finally {
                 setIsLoading(false);
@@ -243,7 +247,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
     const handleManualSearch = () => {
         setIsLoading(true); // Show loading while searching
         // Use manual inputs for matching
-        matchPills(manualImprint, manualColor, manualShape);
+        matchPills(extractedFeatures.imprint, extractedFeatures.basicColor, extractedFeatures.shape);
         setIsLoading(false); // Hide loading after search
     };
 
@@ -295,23 +299,22 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                     <Text style={styles.featureText}>Imprint: {extractedFeatures.imprint}</Text>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
                         <Text style={styles.featureText}>
-                            Dominant
-                            Color: {GetColorName(extractedFeatures.color) + " (" + extractedFeatures.color + ")"}
-                            <ColorBox color={extractedFeatures.color}/>
+                            Dominant Color: {extractedFeatures.basicColor
+                                + " " + <ColorBox color={extractedFeatures.hexColor}/> + " hexColorWtf: " + extractedFeatures.hexColor}
                         </Text>
                     </View>
                     <Text style={styles.featureText}>Shape: {extractedFeatures.shape}</Text>
 
                     {/* --- Manual Input Section --- */}
                     <View style={styles.manualInputContainer}>
-                        <Text style={styles.manualInputTitle}>Manual Search</Text>
+                        <Text style={styles.manualInputTitle}>Confirm Pill Details</Text>
 
                         <Text style={styles.inputLabel}>Imprint Text:</Text>
                         <TextInput
                             style={styles.textInput}
                             placeholder="e.g., M 367, IBUPROFEN"
-                            value={manualImprint}
-                            onChangeText={setManualImprint}
+                            value={extractedFeatures.imprint}
+                            onChangeText={(itemValue: any) => setExtractedFeatures(prev => ({...prev, imprint: itemValue}))}
                         />
 
                         <Dropdown
@@ -319,8 +322,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                             labelStyle={styles.inputLabel}
                             placeholder="Select an option..."
                             options={commonPillColors}
-                            selectedValue={manualColor}
-                            onValueChange={(itemValue: any) => setManualColor(itemValue)}
+                            selectedValue={extractedFeatures.basicColor}
+                            onValueChange={(itemValue: any) => setExtractedFeatures(prev => ({...prev, basicColor: itemValue}))}
                         />
 
                         <Dropdown
@@ -328,8 +331,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({navigation, route}) => {
                             labelStyle={styles.inputLabel}
                             placeholder="Select an option..."
                             options={allPillShapes}
-                            selectedValue={manualShape}
-                            onValueChange={(itemValue: any) => setManualShape(itemValue)}
+                            selectedValue={extractedFeatures.shape}
+                            onValueChange={(itemValue: any) => setExtractedFeatures(prev => ({...prev, shape: itemValue}))}
                         />
 
                         <TouchableOpacity style={styles.searchButton} onPress={handleManualSearch}>

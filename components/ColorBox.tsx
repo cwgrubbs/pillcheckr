@@ -6,7 +6,9 @@ interface ColorBoxProps {
 }
 
 const ColorBox: React.FC<ColorBoxProps> = ({ color }) => {
+    console.log(color);
     return (
+
         <View style={[styles.colorBox, { backgroundColor: color }]} />
     );
 };
