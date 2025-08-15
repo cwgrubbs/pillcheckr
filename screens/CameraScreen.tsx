@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     },
     text: {
         fontSize: 18,
-        basicColor: 'white',
+        color: 'white',
     },
     previewContainer: {
         flex: 1,

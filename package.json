@@ -29,14 +29,17 @@
     "react-native-fast-opencv": "^0.4.6",
     "react-native-fs": "^2.20.0",
     "react-native-input-select": "^2.1.7",
+    "react-native-paper": "^5.14.5",
     "react-native-reanimated": "^3.19.1",
     "react-native-safe-area-context": "^5.6.0",
     "react-native-screens": "^4.13.1",
+    "react-native-svg": "^15.12.1",
     "react-native-web": "^0.20.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.0.10",
+    "@types/react-native": "^0.72.8",
     "typescript": "~5.8.3"
   },
   "private": true
